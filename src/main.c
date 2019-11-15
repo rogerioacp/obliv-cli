@@ -29,9 +29,9 @@ main(int argc, char **argv)
 				j, sRes;
     int         first = 0;
     FILE        *fp;
-    char        row[500];
+    char        row[1000];
     char        uinput[30];
-
+    int         line = 1;
 
 	/*
 	 * If the user supplies a parameter on the command line, use it as the
@@ -54,17 +54,7 @@ main(int argc, char **argv)
 		exit_nicely(conn);
 	}
 
-    /*res = PQexec(conn, "select set_queueoid(16410);");
 
-    if (PQresultStatus(res) != PGRES_TUPLES_OK)
-    {
-        fprintf(stderr, "Open Enclave failed: %s", PQerrorMessage(conn));
-        PQclear(res);
-        exit_nicely(conn);
-    }
-
-    PQclear(res);*/
-    
     res = PQexec(conn, "select open_enclave()");
     
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -76,6 +66,7 @@ main(int argc, char **argv)
 
     PQclear(res);
 
+    
     res = PQexec(conn, "select init_soe(0, CAST( get_ftw_oid() as INTEGER), 1, CAST (get_original_index_oid() as INTEGER))");
     
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -86,8 +77,10 @@ main(int argc, char **argv)
     }
     
     PQclear(res);
+
+
     
-    fp = fopen("src/inserts_obl.sql", "r");
+    fp = fopen("src/inserts_obl_full.sql", "r");
 
     if(fp == NULL){
         perror("Unable to open file!");
@@ -100,44 +93,53 @@ main(int argc, char **argv)
 
         res = PQexec(conn, row);
         
-        //printf("Insert result is %s\n", PQresStatus(PQresultStatus(res)));
-
+       
         if (PQresultStatus(res) != PGRES_COMMAND_OK)
         {
-            fprintf(stderr, "insert row failed: %s\n", PQerrorMessage(conn));
-            PQclear(res);
-            exit_nicely(conn);
+            printf("Insert result is %s\n", PQresStatus(PQresultStatus(res)));
+            printf("insert row %s at line number %d  failed with error: %s\n",row, line, PQerrorMessage(conn));
+            //PQclear(res);
+           // exit_nicely(conn);
         }
         PQclear(res);
-
+        line++;
     }
 
     fclose(fp);
     
    
-     printf("Sent Query\n");
+    printf("Start transaction\n");
+    res = PQexec(conn, "BEGIN");
 
-    //sRes = PQsendQuery(conn, "select datereceived, product, state  from ftw_cfpb where datereceived = '06/12/2019'");
-    //sRes = PQsendQuery(conn, "select datereceived, product, state  from ftw_cfpb where datereceived = '0'");
-    sRes = PQsendQuery(conn, "select datereceived, product, state  from ftw_cfpb;");
+    if(PQresultStatus(res) != PGRES_COMMAND_OK){
+        fprintf(stderr, "BEGIN command failed: %s", PQerrorMessage(conn));
+        PQclear(res);
+        exit_nicely(conn);
+    }
+    
+    PQclear(res);
+    
+    printf("Declare cursor\n");
 
-    if(sRes == 0){
-        fprintf(stderr, "select query failed: %s", PQerrorMessage(conn));
-		exit_nicely(conn);
+    res = PQexec(conn, "DECLARE tcursor CURSOR FOR select datereceived, state, zip from ftw_cfpb");
+
+    if(PQresultStatus(res) != PGRES_COMMAND_OK){
+        fprintf(stderr, "declare cursor failed: %s", PQerrorMessage(conn));
+        PQclear(res);
+        exit_nicely(conn);
     }
 
-    printf("setting single Row Mode\n");
-    sRes = PQsetSingleRowMode(conn);
+    PQclear(res);
 
-    if(sRes == 0){
-        fprintf(stderr, "Set single row mode failed  %s", PQerrorMessage(conn));
-		exit_nicely(conn);
-    }
-   
-    printf("Going to retrieve results\n");
 
-    while((res = PQgetResult(conn))!= NULL){
+    while((res = PQexec(conn, "FETCH NEXT in tcursor"))!= NULL){
         
+        if(PQresultStatus(res) != PGRES_TUPLES_OK){
+            fprintf(stderr, "declare cursor failed: %s", PQerrorMessage(conn));
+            PQclear(res);
+            exit_nicely(conn);
+        }           
+
         //printf("Got new result\n");
         if(!first){
    	    /* first, print out the attribute names */
@@ -161,6 +163,14 @@ main(int argc, char **argv)
             break;
         }
     }
+    
+    /* close the portal ... we don't bothe to check for errors ...*/
+    res = PQexec(conn, "CLOSE tcursor");
+    PQclear(res);
+
+    /* end the transaction */
+    res = PQexec(conn, "END");
+    PQclear(res);
 
 
     /* close the connection to the database and cleanup */
