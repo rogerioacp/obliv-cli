@@ -18,6 +18,14 @@ exit_nicely(PGconn *conn)
 	exit(1);
 }
 
+/*
+PGconn establish_connection(char* arg){
+
+    const char *conninfo;
+
+    if(arg!=NULL)
+}
+*/
 int
 main(int argc, char **argv)
 {
@@ -67,8 +75,9 @@ main(int argc, char **argv)
     PQclear(res);
 
     
-    res = PQexec(conn, "select init_soe(0, CAST( get_ftw_oid() as INTEGER), 1, CAST (get_original_index_oid() as INTEGER))");
-    
+    res = PQexec(conn, "select init_soe(1, CAST( get_ftw_oid() as INTEGER), 1, CAST (get_original_index_oid() as INTEGER))");
+    //res = PQexec(conn, "select init_soe(1, CAST( get_ftw_oid() as INTEGER), 1, CAST (get_original_index_oid() as INTEGER))");
+
     if (PQresultStatus(res) != PGRES_TUPLES_OK)
     {
         fprintf(stderr, "init_soe failed  %s", PQerrorMessage(conn));
@@ -79,9 +88,10 @@ main(int argc, char **argv)
     PQclear(res);
 
 
+    /*printf("Inserting  records in table");
     
     fp = fopen("src/inserts_obl_full.sql", "r");
-
+    
     if(fp == NULL){
         perror("Unable to open file!");
         exit(1);
@@ -98,15 +108,26 @@ main(int argc, char **argv)
         {
             printf("Insert result is %s\n", PQresStatus(PQresultStatus(res)));
             printf("insert row %s at line number %d  failed with error: %s\n",row, line, PQerrorMessage(conn));
-            //PQclear(res);
-           // exit_nicely(conn);
-        }
+           }
         PQclear(res);
         line++;
     }
 
-    fclose(fp);
+    fclose(fp);*/
     
+    printf("Load blocks to oblivious table and oblivious index");
+
+    res = PQexec(conn, "select load_blocks(CAST (get_original_index_oid() as INTEGER), CAST (get_original_heap_oid() as INTEGER))");
+
+    if (PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        fprintf(stderr, "init_soe failed  %s", PQerrorMessage(conn));
+        PQclear(res);
+        exit_nicely(conn);
+    }
+    
+    PQclear(res);
+
    
     printf("Start transaction\n");
     res = PQexec(conn, "BEGIN");
